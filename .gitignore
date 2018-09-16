@@ -1,0 +1,8 @@
+/target
+**/*.rs.bk
+Cargo.lock
+**/*.swp
+db.sqlite
+db.sqlite-shm
+db.sqlite-wal
+td.binlog

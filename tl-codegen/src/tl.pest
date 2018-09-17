@@ -1,0 +1,30 @@
+whitespace = _{ " " | "\n" }
+
+alpha = _{ 'a'..'z' | 'A'..'Z' }
+digit = _{ '0'..'9' }
+
+ident = @{ alpha ~ (alpha | digit | "_")* }
+
+vector = { "vector<" ~ typeid ~ ">" }
+
+typeid = { vector | ident }
+
+param = { ident ~ ":" ~ typeid }
+
+param_list = { param* }
+
+typedef = { ident ~ param_list ~ "=" ~ ident ~ ";" }
+
+docdescr = ${ ("\n//-"? ~ !"\n" ~ !"@" ~ any)* }
+
+docparam = ${ "@" ~ ident ~ " " ~ docdescr }
+
+docstring = ${ ("//" ~ docparam+ ~ ("\n")+)+ }
+
+section = { "---" ~ ident ~ "---"}
+
+definition = { docstring ~ typedef }
+
+item = _{ definition |  section }
+
+tl = _{ soi ~ (item)* ~ eoi }

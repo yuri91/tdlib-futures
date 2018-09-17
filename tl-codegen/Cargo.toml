@@ -1,0 +1,9 @@
+[package]
+name = "tl-codegen"
+version = "0.1.0"
+authors = ["Yuri Iozzelli <y.iozzelli@gmail.com>"]
+
+[dependencies]
+pest = "1.0.6"
+pest_derive = "1.0.8"
+quote = "0.3.15"

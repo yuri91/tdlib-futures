@@ -15,21 +15,28 @@ fn main() {
     let mut client = Client::new();
     let auth = client.authorize(handle.clone()).unwrap();
 
-    let chat_id = 57333322;
+    let chat_id = 11111111;
     let updates = auth.and_then(|updater| {
         let content = InputMessageText {
-            text: FormattedText {text: "test".to_owned()},
+            text: FormattedText {
+                text: "test".to_owned(),
+                entities: Vec::new(),
+            },
+            disable_web_page_preview: false,
+            clear_draft: false,
         };
         let msg = SendMessage {
             chat_id: chat_id,
             reply_to_message_id: 0,
             disable_notification: false,
             from_background: false,
+            reply_markup: None,
             input_message_content: InputMessageContent::InputMessageText(content),
         };
         client.send_spawn(msg, &handle);
         updater.for_each(|u| {
             match u {
+                // handle updates
                 _ => {}
             }
             Ok(())

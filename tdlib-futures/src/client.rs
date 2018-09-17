@@ -2,7 +2,6 @@ use ::futures::Stream;
 use ::futures::Future;
 use ::futures::sync::mpsc;
 use ::futures::sync::oneshot;
-use ::serde::Serialize;
 use ::std::sync::Arc;
 use ::std::sync::Mutex;
 use ::std::sync::atomic::AtomicUsize;
@@ -83,8 +82,9 @@ impl Client {
                             }
                         }
                     }
-                    Err(_) => {
+                    Err(e) => {
                         println!("unhandled message: {}", raw);
+                        println!("reason: {:?}",e);
                         continue;
                     }
                 }
@@ -99,7 +99,6 @@ impl Client {
             payload: data.tag()
         };
         let s = serde_json::to_string(&req).expect("Cannot serialize");
-        println!("sending: {}",s);
         let (tx, rx) = oneshot::channel();
         let mut map = self.pending.lock().unwrap();
         map.insert(id, tx);
@@ -143,7 +142,6 @@ impl<T: Method> Future for AsyncResponse<T> {
         match self.inner.as_mut().unwrap().poll() {
             Ok(futures::Async::NotReady) => Ok(futures::Async::NotReady),
             Ok(futures::Async::Ready(r)) => {
-                println!("received: {}",r);
                 let resp = serde_json::from_str(&r).unwrap();
                 Ok(futures::Async::Ready(resp))
             },
@@ -177,34 +175,39 @@ impl Future for Authorization {
                                     return Err(());
                                 }
                                 match u.unwrap() {
-                                    Update::UpdateAuthorizationState {
+                                    Update::UpdateAuthorizationState(UpdateAuthorizationState {
                                         authorization_state,
-                                    } => {
+                                    }) => {
                                         match authorization_state {
-                                            UpdateAuthorizationState::AuthorizationStateWaitTdlibParameters => {
+                                            AuthorizationState::AuthorizationStateWaitTdlibParameters(_) => {
                                                 let s = SetTdlibParameters {
                                                     parameters: TdlibParameters {
                                                         use_test_dc: false,
-                                                        api_id: 171315,
-                                                        api_hash: "ab1d086610068dea947a5ffd7028cbce".to_owned(),
+                                                        database_directory: ".".to_owned(),
+                                                        files_directory: "Files".to_owned(),
+                                                        use_file_database: true,
+                                                        use_chat_info_database: true,
+                                                        use_message_database: true,
+                                                        use_secret_chats: false,
+                                                        api_id: 177777,
+                                                        api_hash: "somethingsomething".to_owned(),
+                                                        system_language_code: "en".to_owned(),
                                                         device_model: "Desktop".to_owned(),
                                                         system_version: "Unknown".to_owned(),
                                                         application_version: "0.0".to_owned(),
-                                                        system_language_code: "en".to_owned(),
-                                                        files_directory: "Files".to_owned(),
-                                                        use_chat_info_database: true,
-                                                        use_message_database: true,
+                                                        enable_storage_optimizer: true,
+                                                        ignore_file_names: false,
                                                     },
                                                 };
                                                 self.client.send_spawn(s, &self.handle);
                                             }
-                                            UpdateAuthorizationState::AuthorizationStateWaitEncryptionKey => {
+                                            AuthorizationState::AuthorizationStateWaitEncryptionKey(_) => {
                                                 let s = CheckDatabaseEncryptionKey {
                                                     encryption_key: "".to_owned(),
                                                 };
                                                 self.client.send_spawn(s, &self.handle);
                                             }
-                                            UpdateAuthorizationState::AuthorizationStateWaitPhoneNumber => {
+                                            AuthorizationState::AuthorizationStateWaitPhoneNumber(_) => {
                                                 let s = SetAuthenticationPhoneNumber {
                                                     phone_number: "310646493160".to_owned(),
                                                     allow_flash_call: false,
@@ -212,18 +215,29 @@ impl Future for Authorization {
                                                 };
                                                 self.client.send_spawn(s, &self.handle);
                                             }
-                                            UpdateAuthorizationState::AuthorizationStateWaitCode => {
+                                            AuthorizationState::AuthorizationStateWaitCode(_) => {
                                                 let mut line = String::new();
                                                 std::io::stdin().read_line(&mut line).expect("no input");
                                                 let s = CheckAuthenticationCode {
                                                     code: line.trim().to_owned(),
+                                                    first_name: "".to_owned(),
+                                                    last_name: "".to_owned(),
                                                 };
                                                 self.client.send_spawn(s, &self.handle);
                                             }
-                                            UpdateAuthorizationState::AuthorizationStateWaitPassword => {
+                                            AuthorizationState::AuthorizationStateWaitPassword(_) => {
                                                 //TODO
                                             }
-                                            UpdateAuthorizationState::AuthorizationStateReady => {
+                                            AuthorizationState::AuthorizationStateLoggingOut(_) => {
+                                                //TODO
+                                            }
+                                            AuthorizationState::AuthorizationStateClosing(_) => {
+                                                //TODO
+                                            }
+                                            AuthorizationState::AuthorizationStateClosed(_) => {
+                                                //TODO
+                                            }
+                                            AuthorizationState::AuthorizationStateReady(_) => {
                                                 break 'l;
                                             }
                                         }

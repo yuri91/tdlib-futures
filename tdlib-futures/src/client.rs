@@ -105,13 +105,14 @@ impl Client {
         self.tdclient.send(&s);
         rx
     }
-    pub fn authorize(&mut self, handle: tokio_core::reactor::Handle) -> Option<impl Future<Item = Updater, Error = ()>> {
+    pub fn authorize<F: FnMut()->String>(&mut self, handle: tokio_core::reactor::Handle, params:AuthParameters<F>) -> Option<impl Future<Item = Updater, Error = ()>> {
         let mut rx = self.rx.lock().unwrap();
         rx.take().map(|rx| {
             Authorization {
                 rx: Some(rx),
                 client: self.clone(),
                 handle,
+                params,
             }
         })
     }
@@ -149,12 +150,22 @@ impl<T: Method> Future for AsyncResponse<T> {
         }
     }
 }
-pub struct Authorization {
+
+#[derive(Debug, Clone)]
+pub struct AuthParameters<F: FnMut()->String> {
+    pub tdlib: TdlibParameters,
+    pub encryption_key: String,
+    pub phone: String,
+    pub getcode: F,
+
+}
+pub struct Authorization<F: FnMut() -> String> {
     rx: Option<mpsc::UnboundedReceiver<Update>>,
     client: Client,
     handle: tokio_core::reactor::Handle,
+    params: AuthParameters<F>,
 }
-impl Future for Authorization {
+impl<F: FnMut()->String> Future for Authorization<F> {
     type Item = Updater;
     type Error = ();
     fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
@@ -181,45 +192,27 @@ impl Future for Authorization {
                                         match authorization_state {
                                             AuthorizationState::AuthorizationStateWaitTdlibParameters(_) => {
                                                 let s = SetTdlibParameters {
-                                                    parameters: TdlibParameters {
-                                                        use_test_dc: false,
-                                                        database_directory: ".".to_owned(),
-                                                        files_directory: "Files".to_owned(),
-                                                        use_file_database: true,
-                                                        use_chat_info_database: true,
-                                                        use_message_database: true,
-                                                        use_secret_chats: false,
-                                                        api_id: 177777,
-                                                        api_hash: "somethingsomething".to_owned(),
-                                                        system_language_code: "en".to_owned(),
-                                                        device_model: "Desktop".to_owned(),
-                                                        system_version: "Unknown".to_owned(),
-                                                        application_version: "0.0".to_owned(),
-                                                        enable_storage_optimizer: true,
-                                                        ignore_file_names: false,
-                                                    },
+                                                    parameters: self.params.tdlib.clone(),
                                                 };
                                                 self.client.send_spawn(s, &self.handle);
                                             }
                                             AuthorizationState::AuthorizationStateWaitEncryptionKey(_) => {
                                                 let s = CheckDatabaseEncryptionKey {
-                                                    encryption_key: "".to_owned(),
+                                                    encryption_key: self.params.encryption_key.clone(),
                                                 };
                                                 self.client.send_spawn(s, &self.handle);
                                             }
                                             AuthorizationState::AuthorizationStateWaitPhoneNumber(_) => {
                                                 let s = SetAuthenticationPhoneNumber {
-                                                    phone_number: "310646493160".to_owned(),
+                                                    phone_number: self.params.phone.clone(),
                                                     allow_flash_call: false,
                                                     is_current_phone_number: false,
                                                 };
                                                 self.client.send_spawn(s, &self.handle);
                                             }
                                             AuthorizationState::AuthorizationStateWaitCode(_) => {
-                                                let mut line = String::new();
-                                                std::io::stdin().read_line(&mut line).expect("no input");
                                                 let s = CheckAuthenticationCode {
-                                                    code: line.trim().to_owned(),
+                                                    code: (self.params.getcode)(),
                                                     first_name: "".to_owned(),
                                                     last_name: "".to_owned(),
                                                 };

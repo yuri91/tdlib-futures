@@ -17,4 +17,5 @@ log = "0.4.5"
 tl-codegen = { path = "../tl-codegen" }
 
 [dev-dependencies]
-dotenv = "*"
+dotenv = "0.13.0"
+

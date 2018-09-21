@@ -83,8 +83,8 @@ impl Client {
                         }
                     }
                     Err(e) => {
-                        println!("unhandled message: {}", raw);
-                        println!("reason: {:?}",e);
+                        error!("unhandled message: {}", raw);
+                        error!("reason: {:?}",e);
                         continue;
                     }
                 }

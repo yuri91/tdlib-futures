@@ -11,6 +11,7 @@ serde_derive = "1.0.78"
 tdjson-sys = {git = "https://github.com/yuri91/tdjson-sys"}
 tokio-core = "0.1.17"
 serde-aux = "0.5.3"
+log = "0.4.5"
 
 [build-dependencies]
 tl-codegen = { path = "../tl-codegen" }

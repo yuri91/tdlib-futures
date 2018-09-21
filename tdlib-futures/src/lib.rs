@@ -6,6 +6,8 @@ extern crate futures;
 extern crate serde;
 extern crate tokio_core;
 extern crate serde_aux;
+#[macro_use]
+extern crate log;
 
 mod tdjson;
 pub use tdjson::set_log_file;

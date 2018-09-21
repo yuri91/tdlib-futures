@@ -8,6 +8,8 @@ extern crate tokio_core;
 extern crate serde_aux;
 
 mod tdjson;
+pub use tdjson::set_log_file;
+pub use tdjson::set_log_verbosity_level;
 
 pub mod client;
 pub mod types;

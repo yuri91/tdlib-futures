@@ -8,3 +8,4 @@ db.sqlite-wal
 td.binlog
 Files/
 thumbnails
+.env

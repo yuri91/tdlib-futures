@@ -116,7 +116,7 @@ impl Client {
             }
         })
     }
-    pub fn send<T: Method>(&self, data: T) -> impl Future<Item=T::Response, Error=futures::Canceled> {
+    pub fn send<T: Method>(&self, data: T) -> impl Future<Item=T::Response, Error=Error> {
         AsyncResponse {
             data,
             client: self.clone(),
@@ -135,7 +135,7 @@ struct AsyncResponse<T: Method> {
 }
 impl<T: Method> Future for AsyncResponse<T> {
     type Item = T::Response;
-    type Error = futures::Canceled;
+    type Error = Error;
     fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
         if self.inner.is_none() {
             self.inner = Some(self.client.do_send(self.data.clone()));
@@ -143,10 +143,17 @@ impl<T: Method> Future for AsyncResponse<T> {
         match self.inner.as_mut().unwrap().poll() {
             Ok(futures::Async::NotReady) => Ok(futures::Async::NotReady),
             Ok(futures::Async::Ready(r)) => {
-                let resp = serde_json::from_str(&r).unwrap();
-                Ok(futures::Async::Ready(resp))
+                match serde_json::from_str(&r) {
+                    Ok(ok) => Ok(futures::Async::Ready(ok)),
+                    Err(_) => {
+                        match serde_json::from_str(&r) {
+                            Ok(ok) => Err(ok),
+                            Err(_) => Err(Error{code:-1, message: format!("cannot parse response: {}", r)}),
+                        }
+                    }
+                }
             },
-            Err(e) => Err(e)
+            Err(_) => panic!("broken channel"),
         }
     }
 }

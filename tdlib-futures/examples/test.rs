@@ -66,7 +66,9 @@ fn main() {
         let msg = client.send(msg).and_then(|r| {
             println!("response: {:?}",r);
             Ok(())
-        }).map_err(|_|());
+        }).map_err(|e| {
+            println!("sending error: {:?}", e);
+        });
         handle.spawn(msg);
         updater.for_each(|u| {
             println!("new update: {:?}",u);

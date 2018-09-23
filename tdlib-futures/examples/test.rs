@@ -51,7 +51,10 @@ fn main() {
     let chat_id = std::env::var("TG_USER").unwrap().parse().unwrap();
     let updates = auth.and_then(|updater| {
         let content = InputMessageText {
-            text: "test".to_owned(),
+            text: FormattedText {
+                text: "test".to_owned(),
+                entities: Vec::new(),
+            },
             disable_web_page_preview: false,
             clear_draft: false,
         };

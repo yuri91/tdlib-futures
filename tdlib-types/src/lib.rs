@@ -3,6 +3,12 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_aux;
 
+pub mod types {
+include!(concat!(env!("OUT_DIR"), "/td_api_types.rs"));
+}
+
+pub mod methods {
+use super::types::*;
 use ::serde::de::DeserializeOwned;
 use ::serde::Serialize;
 use ::std::fmt::Debug;
@@ -19,7 +25,6 @@ pub trait Method: Serialize+Clone {
         }
     }
 }
-
 #[derive(Serialize, Debug, Clone)]
 pub struct MethodType<T: Method> {
     #[serde(rename="@type")]
@@ -28,4 +33,5 @@ pub struct MethodType<T: Method> {
     pub payload: T,
 }
 
-include!(concat!(env!("OUT_DIR"), "/td_api.rs"));
+include!(concat!(env!("OUT_DIR"), "/td_api_methods.rs"));
+}

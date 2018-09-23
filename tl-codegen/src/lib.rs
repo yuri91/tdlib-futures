@@ -249,12 +249,13 @@ fn extract_docinfo(
     TypeDocInfo { doc, params }
 }
 
-pub fn generate(src: &str) -> String {
+pub fn generate(src: &str) -> (String, String) {
     let pairs = TlParser::parse(Rule::tl, &src).unwrap_or_else(|e| panic!("{}", e));
 
     let mut functions = false;
     let mut classes = HashMap::new();
-    let mut tokens = quote::Tokens::new();
+    let mut type_tokens = quote::Tokens::new();
+    let mut method_tokens = quote::Tokens::new();
     for pair in pairs {
         match pair.as_rule() {
             Rule::section => {
@@ -265,11 +266,11 @@ pub fn generate(src: &str) -> String {
                 let docstring = pairs.next().unwrap();
                 let typedef = pairs.next().unwrap();
                 let docinfo = extract_docinfo(docstring, &mut classes);
-                tokens.append(if functions {
-                    render_method(typedef, docinfo)
+                if functions {
+                    method_tokens.append(render_method(typedef, docinfo));
                 } else {
-                    render_type(typedef, docinfo, &mut classes)
-                });
+                    type_tokens.append(render_type(typedef, docinfo, &mut classes));
+                }
             }
             _ => {
                 unreachable!();
@@ -277,7 +278,7 @@ pub fn generate(src: &str) -> String {
         }
     }
     for (_, class) in classes.into_iter() {
-        tokens.append(render_class(class));
+        type_tokens.append(render_class(class));
     }
-    tokens.as_str().to_owned()
+    (type_tokens.as_str().to_owned(), method_tokens.as_str().to_owned())
 }

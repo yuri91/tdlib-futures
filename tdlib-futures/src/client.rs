@@ -14,6 +14,7 @@ use ::futures;
 
 use super::tdjson;
 use super::types::*;
+use super::methods::*;
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]

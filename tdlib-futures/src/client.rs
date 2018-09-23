@@ -40,18 +40,18 @@ struct Response {
 
 #[derive(Clone)]
 pub struct Client {
-    tdclient: Arc<tdjson::Client>,
+    tdclient: tdjson::SendClient,
     rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<Update>>>>,
     pending: Arc<Mutex<HashMap<usize, oneshot::Sender<String>>>>,
     next_id: Arc<AtomicUsize>,
 }
 impl Client {
     pub fn new() -> Client {
-        let tdclient = Arc::new(tdjson::Client::new());
+        let (send_client, mut recv_client) = tdjson::Client::new().split();
         let (tx, rx) = mpsc::unbounded();
         let pending = Arc::new(Mutex::new(HashMap::new()));
         let client = Client {
-            tdclient: tdclient.clone(),
+            tdclient: send_client,
             rx: Arc::new(Mutex::new(Some(rx))),
             pending: pending.clone(),
             next_id: Arc::new(AtomicUsize::new(0)),
@@ -59,7 +59,7 @@ impl Client {
         std::thread::spawn(move || {
             let mut running = true;
             while running {
-                let raw = tdclient.receive(Duration::from_secs(1));
+                let raw = recv_client.receive(Duration::from_secs(1));
                 let raw = match raw {
                     Some(raw) => raw,
                     None => continue,

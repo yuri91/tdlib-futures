@@ -2,6 +2,14 @@
 name = "tdlib-types"
 version = "0.1.0"
 authors = ["Yuri Iozzelli <y.iozzelli@gmail.com>"]
+description = "Telegram API types generated from td_api.tl"
+license = "MIT OR Apache-2.0"
+keywords = [
+    "telegram",
+    "tl",
+    "api",
+    "tdlib",
+]
 
 [dependencies]
 serde = "1.0.78"

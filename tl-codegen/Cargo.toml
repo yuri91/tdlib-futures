@@ -2,6 +2,7 @@
 name = "tl-codegen"
 version = "0.1.0"
 authors = ["Yuri Iozzelli <y.iozzelli@gmail.com>"]
+description = "Generate rust types from a tl file"
 
 [dependencies]
 pest = "1.0.6"

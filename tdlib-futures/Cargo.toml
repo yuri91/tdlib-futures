@@ -8,8 +8,8 @@ futures = "0.1.24"
 serde = "1.0.78"
 serde_json = "1.0.27"
 serde_derive = "1.0.78"
-tdjson = {path = "../../tdjson-rs"}
-tdlib-types = {path = "../tdlib-types"}
+tdjson = "0.2" 
+tdlib-types = "0.1.0"
 tokio-core = "0.1.17"
 serde-aux = "0.5.3"
 log = "0.4.5"

@@ -2,6 +2,13 @@
 name = "tdlib-futures"
 version = "0.1.0"
 authors = ["Yuri Iozzelli <y.iozzelli@gmail.com>"]
+description = "Futures-based telegram client library powered by tdlib"
+license = "MIT OR Apache-2.0"
+keywords = [
+    "telegram",
+    "api",
+    "tdlib",
+]
 
 [dependencies]
 futures = "0.1.24"

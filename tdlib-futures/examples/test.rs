@@ -9,6 +9,7 @@ use futures::prelude::*;
 use tdlib_futures::client::AuthParameters;
 use tdlib_futures::client::Client;
 use tdlib_futures::types::*;
+use tdlib_futures::methods::*;
 
 fn main() {
     dotenv().ok();

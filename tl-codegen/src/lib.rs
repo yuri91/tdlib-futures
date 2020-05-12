@@ -18,8 +18,8 @@ fn capitalize(s: &str) -> String {
     v.into_iter().collect()
 }
 
-fn convert_type(t: &str) -> String {
-    match t {
+fn convert_type(t: &str) -> proc_macro2::Ident {
+    format_ident!("{}", match t {
         "double" => "f64".to_owned(),
         "string" => "String".to_owned(),
         "int32" => "i32".to_owned(),
@@ -28,10 +28,10 @@ fn convert_type(t: &str) -> String {
         "Bool" => "bool".to_owned(),
         "bytes" => "String".to_owned(),
         _ => capitalize(t),
-    }.to_owned()
+    })
 }
 
-fn convert_typeid(pair: pest::iterators::Pair<Rule>, res: &mut String) {
+fn convert_typeid(pair: pest::iterators::Pair<Rule>) -> proc_macro2::TokenStream {
     match pair.as_rule() {
         Rule::vector => {
             let inner = pair
@@ -41,17 +41,16 @@ fn convert_typeid(pair: pest::iterators::Pair<Rule>, res: &mut String) {
                 .into_inner()
                 .next()
                 .unwrap();
-            res.push_str("Vec<");
-            convert_typeid(inner, res);
-            res.push_str(">");
+            let t = convert_typeid(inner);
+            quote! {Vec<#t>}
         }
         Rule::ident => {
             let ident = pair.as_str();
-            let ident = convert_type(ident);
-            res.push_str(&ident);
+            let t = convert_type(ident);
+            quote! { #t }
         }
         _ => unreachable!(),
-    };
+    }
 }
 
 fn render_param(
@@ -64,12 +63,11 @@ fn render_param(
     let docinfo = docinfo.get(&name).unwrap();
     let typeid = pairs.next().unwrap();
     let typeid = typeid.into_inner().next().unwrap();
-    let mut typeid_str = String::new();
-    convert_typeid(typeid, &mut typeid_str);
+    let mut typeid = convert_typeid(typeid);
+    let typeid_str = format!("{}", typeid);
     if typeid_str == parent_class {
-        typeid_str = format!("Box<{}>", typeid_str);
+        typeid = quote!{ Box<#typeid> };
     }
-    let typeid = typeid_str;
     let mut pre = if name == "type" {
         name.push('_');
         quote! {
@@ -78,14 +76,14 @@ fn render_param(
     } else {
         quote! {}
     };
-    let default_false = if typeid == "bool" {
+    let default_false = if typeid_str == "bool" {
         quote!{
             #[serde(default)]
         }
     } else {
         quote! {}
     };
-    let serialize_number = if typeid == "i32" || typeid == "i64" {
+    let serialize_number = if typeid_str == "i32" || typeid_str == "i64" {
         quote!{
             #[serde(deserialize_with="::serde_aux::field_attributes::deserialize_number_from_string")]
         }
@@ -93,9 +91,9 @@ fn render_param(
         quote! {}
     };
     let typeid = if docinfo.optional {
-        format_ident!("Option<{}>", typeid)
+        quote!{Option<#typeid>}
     } else {
-        format_ident!("{}", typeid)
+        quote!{#typeid}
     };
     let name = format_ident!("{}", name);
     let doc = docinfo.doc.replace("//-", " ");
@@ -156,7 +154,7 @@ fn render_method(pair: pest::iterators::Pair<Rule>, docinfo: TypeDocInfo) -> pro
         .map(|p| render_param(p, &docinfo.params, ""))
         .collect::<Vec<_>>();
     let name_ident = format_ident!("{}",name_capitalized);
-    let rettype = format_ident!("{}",convert_type(pairs.next().unwrap().as_str()));
+    let rettype = convert_type(pairs.next().unwrap().as_str());
 
     let doc = docinfo.doc.replace("//-", " ");
     quote! {

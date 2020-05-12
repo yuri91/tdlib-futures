@@ -1,4 +1,4 @@
-whitespace = _{ " " | "\n" }
+WHITESPACE = _{ " " | "\n" }
 
 alpha = _{ 'a'..'z' | 'A'..'Z' }
 digit = _{ '0'..'9' }

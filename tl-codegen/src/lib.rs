@@ -270,6 +270,8 @@ pub fn generate(src: &str) -> (String, String) {
                     type_tokens.extend(render_type(typedef, docinfo, &mut classes));
                 }
             }
+            Rule::EOI => {
+            }
             _ => {
                 unreachable!();
             }

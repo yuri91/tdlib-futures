@@ -58,7 +58,7 @@ fn render_param(
     pair: pest::iterators::Pair<Rule>,
     docinfo: &HashMap<String, ParamDocInfo>,
     parent_class: &str,
-) -> quote::Tokens {
+) -> proc_macro2::TokenStream {
     let mut pairs = pair.into_inner();
     let mut name = pairs.next().unwrap().as_str().to_owned();
     let docinfo = docinfo.get(&name).unwrap();
@@ -76,30 +76,30 @@ fn render_param(
             #[serde(rename="type")]
         }
     } else {
-        quote::Tokens::new()
+        quote! {}
     };
     let default_false = if typeid == "bool" {
         quote!{
             #[serde(default)]
         }
     } else {
-        quote::Tokens::new()
+        quote! {}
     };
     let serialize_number = if typeid == "i32" || typeid == "i64" {
         quote!{
             #[serde(deserialize_with="::serde_aux::field_attributes::deserialize_number_from_string")]
         }
     } else {
-        quote::Tokens::new()
+        quote! {}
     };
     let typeid = if docinfo.optional {
-        quote::Ident::new(format!("Option<{}>", typeid))
+        format_ident!("Option<{}>", typeid)
     } else {
-        quote::Ident::new(typeid)
+        format_ident!("{}", typeid)
     };
-    let name = quote::Ident::new(name);
+    let name = format_ident!("{}", name);
     let doc = docinfo.doc.replace("//-", " ");
-    pre.append(quote! {
+    pre.extend(quote! {
         #[doc = #doc]
         #serialize_number
         #default_false
@@ -119,10 +119,10 @@ fn render_type(
     pair: pest::iterators::Pair<Rule>,
     docinfo: TypeDocInfo,
     classes: &mut HashMap<String, Class>,
-) -> quote::Tokens {
+) -> proc_macro2::TokenStream {
     let mut pairs = pair.into_inner();
     let name = pairs.next().unwrap().as_str();
-    let name_capitalized = quote::Ident::new(capitalize(name));
+    let name_capitalized = format_ident!("{}", capitalize(name));
     let params = pairs.next().unwrap();
     let classname = capitalize(pairs.next().unwrap().as_str());
     let params = params
@@ -146,7 +146,7 @@ fn render_type(
     }
 }
 
-fn render_method(pair: pest::iterators::Pair<Rule>, docinfo: TypeDocInfo) -> quote::Tokens {
+fn render_method(pair: pest::iterators::Pair<Rule>, docinfo: TypeDocInfo) -> proc_macro2::TokenStream {
     let mut pairs = pair.into_inner();
     let name = pairs.next().unwrap().as_str();
     let name_capitalized = capitalize(name);
@@ -155,8 +155,8 @@ fn render_method(pair: pest::iterators::Pair<Rule>, docinfo: TypeDocInfo) -> quo
         .into_inner()
         .map(|p| render_param(p, &docinfo.params, ""))
         .collect::<Vec<_>>();
-    let name_ident = quote::Ident::new(name_capitalized);
-    let rettype = quote::Ident::new(convert_type(pairs.next().unwrap().as_str()));
+    let name_ident = format_ident!("{}",name_capitalized);
+    let rettype = format_ident!("{}",convert_type(pairs.next().unwrap().as_str()));
 
     let doc = docinfo.doc.replace("//-", " ");
     quote! {
@@ -172,15 +172,15 @@ fn render_method(pair: pest::iterators::Pair<Rule>, docinfo: TypeDocInfo) -> quo
     }
 }
 
-fn render_class(class: Class) -> quote::Tokens {
-    let name = quote::Ident::new(class.name);
+fn render_class(class: Class) -> proc_macro2::TokenStream {
+    let name = format_ident!("{}",class.name);
     let types = class
         .types
         .into_iter()
-        .map(|t| quote::Ident::new(t))
+        .map(|t| format_ident!("{}",t))
         .collect::<Vec<_>>();
     if types.len() <= 1 {
-        return quote::Tokens::new();
+        return quote!{};
     }
     let types2 = types.clone();
     let doc = class.doc.replace("//-", " ");
@@ -254,8 +254,8 @@ pub fn generate(src: &str) -> (String, String) {
 
     let mut functions = false;
     let mut classes = HashMap::new();
-    let mut type_tokens = quote::Tokens::new();
-    let mut method_tokens = quote::Tokens::new();
+    let mut type_tokens = quote!{};
+    let mut method_tokens = quote!{};
     for pair in pairs {
         match pair.as_rule() {
             Rule::section => {
@@ -267,9 +267,9 @@ pub fn generate(src: &str) -> (String, String) {
                 let typedef = pairs.next().unwrap();
                 let docinfo = extract_docinfo(docstring, &mut classes);
                 if functions {
-                    method_tokens.append(render_method(typedef, docinfo));
+                    method_tokens.extend(render_method(typedef, docinfo));
                 } else {
-                    type_tokens.append(render_type(typedef, docinfo, &mut classes));
+                    type_tokens.extend(render_type(typedef, docinfo, &mut classes));
                 }
             }
             _ => {
@@ -278,7 +278,7 @@ pub fn generate(src: &str) -> (String, String) {
         }
     }
     for (_, class) in classes.into_iter() {
-        type_tokens.append(render_class(class));
+        type_tokens.extend(render_class(class));
     }
-    (type_tokens.as_str().to_owned(), method_tokens.as_str().to_owned())
+    (format!("{}",type_tokens), format!("{}",method_tokens))
 }

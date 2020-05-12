@@ -15,7 +15,7 @@ param_list = { param* }
 
 typedef = { ident ~ param_list ~ "=" ~ ident ~ ";" }
 
-docdescr = ${ ("\n//-"? ~ !"\n" ~ !"@" ~ any)* }
+docdescr = ${ ("\n//-"? ~ !"\n" ~ !"@" ~ ANY)* }
 
 docparam = ${ "@" ~ ident ~ " " ~ docdescr }
 
@@ -27,4 +27,4 @@ definition = { docstring ~ typedef }
 
 item = _{ definition |  section }
 
-tl = _{ soi ~ (item)* ~ eoi }
+tl = _{ SOI ~ (item)* ~ EOI }

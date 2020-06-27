@@ -136,7 +136,7 @@ fn render_type(
 
     let doc = docinfo.doc.replace("//-", " ");
     quote! {
-        #[derive(Serialize, Deserialize, Debug, Clone)]
+        #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
         #[doc = #doc]
         pub struct #name_capitalized {
             #(#params),*
@@ -183,7 +183,7 @@ fn render_class(class: Class) -> proc_macro2::TokenStream {
     let types2 = types.clone();
     let doc = class.doc.replace("//-", " ");
     quote! {
-        #[derive(Serialize, Deserialize, Debug, Clone)]
+        #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
         #[serde(rename_all="camelCase")]
         #[serde(tag="@type")]
         #[doc = #doc]

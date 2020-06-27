@@ -7,7 +7,7 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::collections::HashMap;
 use std::time::Duration;
-use serde_derive::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize};
 use log::error;
 
 use crate::types::*;

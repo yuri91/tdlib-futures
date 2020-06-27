@@ -1,14 +1,12 @@
-use futures::Stream;
-use futures::Future;
-use futures::sync::mpsc;
-use futures::sync::oneshot;
 use std::sync::Arc;
-use std::sync::Mutex;
+use futures::lock::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::collections::HashMap;
 use std::time::Duration;
 use serde::{Serialize, Deserialize};
 use log::error;
+use futures::channel::{mpsc, oneshot};
+use futures::{SinkExt, StreamExt};
 
 use crate::types::*;
 use crate::methods::*;
@@ -34,63 +32,83 @@ enum Message {
 struct Response {
     #[serde(rename = "@extra")]
     id: usize,
+    #[serde(flatten)]
+    payload: serde_json::Value,
 }
 
-#[derive(Clone)]
-pub struct Client {
+pub fn init() -> (Sender, Receiver, Updater) {
+    let (send, recv) = tdjson::Client::new().split();
+    let (tx, rx) = mpsc::channel(256);
+    let pending = Arc::new(Mutex::new(HashMap::new()));
+    let client = Sender {
+        tdclient: send,
+        pending: pending.clone(),
+        next_id: Arc::new(AtomicUsize::new(0)),
+    };
+    let updater = Updater {
+        recv: Some(recv),
+        tx,
+        pending,
+    };
+    (client, rx, updater)
+}
+
+pub type Receiver = mpsc::Receiver<Update>;
+
+pub struct Sender {
     tdclient: tdjson::SendClient,
-    rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<Update>>>>,
     pending: Arc<Mutex<HashMap<usize, oneshot::Sender<String>>>>,
     next_id: Arc<AtomicUsize>,
 }
-impl Client {
-    pub fn new() -> Client {
-        let (send_client, mut recv_client) = tdjson::Client::new().split();
-        let (tx, rx) = mpsc::unbounded();
-        let pending = Arc::new(Mutex::new(HashMap::new()));
-        let client = Client {
-            tdclient: send_client,
-            rx: Arc::new(Mutex::new(Some(rx))),
-            pending: pending.clone(),
-            next_id: Arc::new(AtomicUsize::new(0)),
-        };
-        std::thread::spawn(move || {
-            let mut running = true;
-            while running {
-                let raw = recv_client.receive(Duration::from_secs(1));
-                let raw = match raw {
-                    Some(raw) => raw,
-                    None => continue,
-                };
-                let mess: Result<Message, _> = serde_json::from_str(raw);
-                match mess {
-                    Ok(m) => {
-                        match m {
-                            Message::Response(r) => {
-                                let mut map =  pending.lock().unwrap();
-                                let tx = map.remove(&r.id);
-                                if let Some(tx) = tx {
-                                    let _ = tx.send(raw.to_owned());
-                                }
-                            }
-                            Message::Update(u) => {
-                                let sent = tx.unbounded_send(u);
-                                running = sent.is_ok();
-                                // TODO send error to channel
+pub struct Updater {
+    recv: Option<tdjson::ReceiveClient>,
+    tx: mpsc::Sender<Update>,
+    pending: Arc<Mutex<HashMap<usize, oneshot::Sender<String>>>>,
+}
+impl Updater {
+    pub async fn drive(mut self) {
+        let mut recv = self.recv.take();
+        loop {
+            let (raw, recv2) = blocking::unblock(move || {
+                let mut recv2 = recv.unwrap();
+                let raw = recv2.receive(Duration::from_secs(1)).map(|r|r.to_owned());
+                (raw, recv2)
+            }).await;
+            recv = Some(recv2);
+            let raw = match raw {
+                Some(raw) => raw,
+                None => continue,
+            };
+            let mess: Result<Message, _> = serde_json::from_str(&raw);
+            match mess {
+                Ok(m) => {
+                    log::info!("Updater received: {:?}", m);
+                    match m {
+                        Message::Response(r) => {
+                            let mut map =  self.pending.lock().await;
+                            let tx = map.remove(&r.id);
+                            if let Some(tx) = tx {
+                                tx.send(raw.to_owned()).expect("canceled future");
+                            } else {
+                                log::error!("no request mapped for id {}", r.id);
                             }
                         }
-                    }
-                    Err(e) => {
-                        error!("unhandled message: {}", raw);
-                        error!("reason: {:?}",e);
-                        continue;
+                        Message::Update(u) => {
+                            self.tx.send(u).await.expect("canceled future");
+                        }
                     }
                 }
+                Err(e) => {
+                    error!("unhandled message: {}", raw);
+                    error!("reason: {:?}",e);
+                    continue;
+                }
             }
-        });
-        client
+        }
     }
-    fn do_send<T: Method>(&self, data: T) -> oneshot::Receiver<String> {
+}
+impl Sender {
+    pub async fn send<T: Method>(&self, data: T) -> Result<T::Response, Error> {
         let id = self.next_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let req = Request {
             id,
@@ -98,64 +116,26 @@ impl Client {
         };
         let s = serde_json::to_string(&req).expect("Cannot serialize");
         let (tx, rx) = oneshot::channel();
-        let mut map = self.pending.lock().unwrap();
-        map.insert(id, tx);
+        {
+            let mut map = self.pending.lock().await;
+            map.insert(id, tx);
+        }
         self.tdclient.send(&s);
-        rx
-    }
-    pub fn authorize<F: FnMut()->String>(&mut self, handle: tokio_core::reactor::Handle, params:AuthParameters<F>) -> Option<impl Future<Item = Updater, Error = ()>> {
-        let mut rx = self.rx.lock().unwrap();
-        rx.take().map(|rx| {
-            Authorization {
-                rx: Some(rx),
-                client: self.clone(),
-                handle,
-                params,
-            }
-        })
-    }
-    pub fn send<T: Method>(&self, data: T) -> impl Future<Item=T::Response, Error=Error> {
-        AsyncResponse {
-            data,
-            client: self.clone(),
-            inner: None,
-        }
-    }
-    pub fn send_spawn<T: Method+'static>(&self, data: T, handle: &tokio_core::reactor::Handle) {
-        let f = self.send(data);
-        handle.spawn(f.map(|_|()).map_err(|_|()));
-    }
-}
-struct AsyncResponse<T: Method> {
-    data: T,
-    client: Client,
-    inner: Option<oneshot::Receiver<String>>
-}
-impl<T: Method> Future for AsyncResponse<T> {
-    type Item = T::Response;
-    type Error = Error;
-    fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
-        if self.inner.is_none() {
-            self.inner = Some(self.client.do_send(self.data.clone()));
-        }
-        match self.inner.as_mut().unwrap().poll() {
-            Ok(futures::Async::NotReady) => Ok(futures::Async::NotReady),
-            Ok(futures::Async::Ready(r)) => {
-                match serde_json::from_str(&r) {
-                    Ok(ok) => Ok(futures::Async::Ready(ok)),
-                    Err(_) => {
-                        match serde_json::from_str(&r) {
-                            Ok(ok) => Err(ok),
-                            Err(_) => Err(Error{code:-1, message: format!("cannot parse response: {}", r)}),
-                        }
-                    }
-                }
+        let raw = rx.await.expect("canceled future");
+        match serde_json::from_str::<Response>(&raw) {
+            Ok(r) => {
+                let res = serde_json::from_value::<T::Response>(r.payload).expect("cannot deserialize");
+                Ok(res)
             },
-            Err(_) => panic!("broken channel"),
+            Err(_) => {
+                match serde_json::from_str(&raw) {
+                    Ok(ok) => Err(ok),
+                    Err(_) => Err(Error{code:-1, message: format!("cannot parse response: {}", raw)}),
+                }
+            }
         }
     }
 }
-
 #[derive(Debug, Clone)]
 pub struct AuthParameters<F: FnMut()->String> {
     pub tdlib: TdlibParameters,
@@ -164,106 +144,48 @@ pub struct AuthParameters<F: FnMut()->String> {
     pub getcode: F,
 
 }
-pub struct Authorization<F: FnMut() -> String> {
-    rx: Option<mpsc::UnboundedReceiver<Update>>,
-    client: Client,
-    handle: tokio_core::reactor::Handle,
-    params: AuthParameters<F>,
-}
-impl<F: FnMut()->String> Future for Authorization<F> {
-    type Item = Updater;
-    type Error = ();
-    fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
-        if self.rx.is_none() {
-            panic!("Already authorized");
-        }
-        {
-            let rx = self.rx.as_mut().unwrap();
-            'l: loop {
-                match rx.poll() {
-                    Err(_) => {
-                        return Err(());
-                    },
-                    Ok(a) => {
-                        match a {
-                            futures::Async::Ready(u) => {
-                                if u.is_none() {
-                                    return Err(());
-                                }
-                                match u.unwrap() {
-                                    Update::UpdateAuthorizationState(UpdateAuthorizationState {
-                                        authorization_state,
-                                    }) => {
-                                        match authorization_state {
-                                            AuthorizationState::AuthorizationStateWaitTdlibParameters(_) => {
-                                                let s = SetTdlibParameters {
-                                                    parameters: self.params.tdlib.clone(),
-                                                };
-                                                self.client.send_spawn(s, &self.handle);
-                                            }
-                                            AuthorizationState::AuthorizationStateWaitEncryptionKey(_) => {
-                                                let s = CheckDatabaseEncryptionKey {
-                                                    encryption_key: self.params.encryption_key.clone(),
-                                                };
-                                                self.client.send_spawn(s, &self.handle);
-                                            }
-                                            AuthorizationState::AuthorizationStateWaitPhoneNumber(_) => {
-                                                let s = SetAuthenticationPhoneNumber {
-                                                    phone_number: self.params.phone.clone(),
-                                                    allow_flash_call: false,
-                                                    is_current_phone_number: false,
-                                                };
-                                                self.client.send_spawn(s, &self.handle);
-                                            }
-                                            AuthorizationState::AuthorizationStateWaitCode(_) => {
-                                                let s = CheckAuthenticationCode {
-                                                    code: (self.params.getcode)(),
-                                                    first_name: "".to_owned(),
-                                                    last_name: "".to_owned(),
-                                                };
-                                                self.client.send_spawn(s, &self.handle);
-                                            }
-                                            AuthorizationState::AuthorizationStateWaitPassword(_) => {
-                                                //TODO
-                                            }
-                                            AuthorizationState::AuthorizationStateLoggingOut(_) => {
-                                                //TODO
-                                            }
-                                            AuthorizationState::AuthorizationStateClosing(_) => {
-                                                //TODO
-                                            }
-                                            AuthorizationState::AuthorizationStateClosed(_) => {
-                                                //TODO
-                                            }
-                                            AuthorizationState::AuthorizationStateReady(_) => {
-                                                break 'l;
-                                            }
-                                        }
-                                    }
-                                    _ => {
-                                    },
-                                }
-                            },
-                            futures::Async::NotReady => {
-                                return Ok(futures::Async::NotReady);
-                            }
-                        }
-                    }
+macro_rules! wait_for_authorization_state {
+    ($receiver:expr, $name:ident) => {
+        loop {
+            let update = $receiver.next().await.expect("no update");
+            if let Update::UpdateAuthorizationState(state) = update {
+                if let AuthorizationState::AuthorizationStateReady(_a) = state.authorization_state {
+                    return Ok(());
+                }
+                else if let AuthorizationState::$name(_a) = state.authorization_state {
+                    break;
+                } else {
+                    return Err(Error{code:-1, message: format!("unexpected state: {:?}", state)});
                 }
             }
         }
-        Ok(futures::Async::Ready(Updater {
-            rx: self.rx.take().unwrap(),
-        }))
     }
 }
-pub struct Updater {
-    rx: mpsc::UnboundedReceiver<Update>,
-}
-impl Stream for Updater {
-    type Item = Update;
-    type Error = ();
-    fn poll(&mut self) -> futures::Poll<Option<Self::Item>, Self::Error> {
-        self.rx.poll()
-    }
+pub async fn authorize<F: FnMut()->String>(mut params: AuthParameters<F>, sender: &mut Sender, receiver: &mut Receiver) -> Result<(), Error> {
+    wait_for_authorization_state!(receiver, AuthorizationStateWaitTdlibParameters);
+    let s = SetTdlibParameters {
+        parameters: params.tdlib
+    };
+    sender.send(s).await?;
+    wait_for_authorization_state!(receiver, AuthorizationStateWaitEncryptionKey);
+    let s = CheckDatabaseEncryptionKey {
+        encryption_key: params.encryption_key,
+    };
+    sender.send(s).await?;
+    wait_for_authorization_state!(receiver, AuthorizationStateWaitPhoneNumber);
+    let s = SetAuthenticationPhoneNumber {
+        phone_number: params.phone,
+        allow_flash_call: false,
+        is_current_phone_number: false,
+    };
+    sender.send(s).await?;
+    wait_for_authorization_state!(receiver, AuthorizationStateWaitCode);
+    let s = CheckAuthenticationCode {
+        code: (params.getcode)(),
+        first_name: "".to_owned(),
+        last_name: "".to_owned(),
+    };
+    sender.send(s).await?;
+    wait_for_authorization_state!(receiver, AuthorizationStateReady);
+    return Ok(());
 }

@@ -1,20 +1,17 @@
-use ::futures::Stream;
-use ::futures::Future;
-use ::futures::sync::mpsc;
-use ::futures::sync::oneshot;
-use ::std::sync::Arc;
-use ::std::sync::Mutex;
-use ::std::sync::atomic::AtomicUsize;
-use ::std::collections::HashMap;
-use ::std::time::Duration;
-use ::std;
-use ::serde_json;
-use ::tokio_core;
-use ::futures;
+use futures::Stream;
+use futures::Future;
+use futures::sync::mpsc;
+use futures::sync::oneshot;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::AtomicUsize;
+use std::collections::HashMap;
+use std::time::Duration;
+use serde_derive::{Serialize, Deserialize};
+use log::error;
 
-use super::tdjson;
-use super::types::*;
-use super::methods::*;
+use crate::types::*;
+use crate::methods::*;
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]

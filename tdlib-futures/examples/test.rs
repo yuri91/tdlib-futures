@@ -17,8 +17,8 @@ fn main() {
     spawner.spawn(updater.drive()).expect("cannot spawn updater");
     let tdlib = TdlibParameters {
         use_test_dc: false,
-        database_directory: "db".to_owned(),
-        files_directory: "Files".to_owned(),
+        database_directory: "data/db".to_owned(),
+        files_directory: "data/Files".to_owned(),
         use_file_database: true,
         use_chat_info_database: true,
         use_message_database: true,

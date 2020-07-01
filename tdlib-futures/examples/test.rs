@@ -38,50 +38,42 @@ fn main() {
         std::io::stdin().read_line(&mut line).expect("no input");
         line.trim().to_owned()
     };
-    let params = AuthParameters {
-        tdlib,
-        encryption_key: std::env::var("TDLIB_ENCRYPTION_KEY").unwrap().to_owned(),
-        phone: std::env::var("TDLIB_PHONE").unwrap().to_owned(),
-        getcode,
-    };
+    let params = AuthParameters::for_bot(tdlib,
+        std::env::var("TDLIB_ENCRYPTION_KEY").unwrap().to_owned(),
+        std::env::var("TDLIB_BOT_TOKEN").unwrap().to_owned());
+    //let params = AuthParameters::for_user(tdlib,
+    //    std::env::var("TDLIB_ENCRYPTION_KEY").unwrap().to_owned(),
+    //    std::env::var("TDLIB_PHONE").unwrap().to_owned(),
+    //    getcode);
+    let my_id: i32 = std::env::var("TG_BOT_ID").unwrap().parse().unwrap();
     pool.run_until(async move {
         authorize(params, &mut sender, &mut receiver).await.expect("failed to authorize");
         loop {
-            let update = receiver.next().await;
-            dbg!(update);
+            let update = dbg!(receiver.next().await);
+            if let Some(Update::UpdateNewMessage(msg)) = update {
+                if msg.message.sender_user_id == my_id {
+                    continue;
+                }
+                if let MessageContent::MessageText(text) = msg.message.content {
+                    let m = InputMessageText {
+                        text: FormattedText {
+                            text: format!("echo '{}'", text.text.text),
+                            entities: Vec::new(),
+                        },
+                        clear_draft: false,
+                        disable_web_page_preview: true,
+                    };
+                    let resp = SendMessage {
+                        chat_id: msg.message.chat_id,
+                        reply_to_message_id: msg.message.id,
+                        disable_notification: false,
+                        from_background: false,
+                        reply_markup: None,
+                        input_message_content: InputMessageContent::InputMessageText(m),
+                    };
+                    dbg!(sender.send(resp).await).ok();
+                }
+            }
         }
     });
-
-    //let chat_id = std::env::var("TG_USER").unwrap().parse().unwrap();
-    //let updates = auth.and_then(|updater| {
-    //    let content = InputMessageText {
-    //        text: FormattedText {
-    //            text: "test".to_owned(),
-    //            entities: Vec::new(),
-    //        },
-    //        disable_web_page_preview: false,
-    //        clear_draft: false,
-    //    };
-    //    let msg = SendMessage {
-    //        chat_id: chat_id,
-    //        reply_to_message_id: 0,
-    //        disable_notification: false,
-    //        from_background: false,
-    //        reply_markup: None,
-    //        input_message_content: InputMessageContent::InputMessageText(content),
-    //    };
-    //    let msg = client.send(msg).and_then(|r| {
-    //        println!("response: {:?}",r);
-    //        Ok(())
-    //    }).map_err(|e| {
-    //        println!("sending error: {:?}", e);
-    //    });
-    //    handle.spawn(msg);
-    //    updater.for_each(|u| {
-    //        println!("new update: {:?}",u);
-    //        Ok(())
-    //    })
-    //});
-
-    //core.run(updates).unwrap();
 }

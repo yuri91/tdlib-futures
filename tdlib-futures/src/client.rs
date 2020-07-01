@@ -124,7 +124,10 @@ impl Sender {
         let raw = rx.await.expect("canceled future");
         match serde_json::from_str::<Response>(&raw) {
             Ok(r) => {
-                let res = serde_json::from_value::<T::Response>(r.payload).expect("cannot deserialize");
+                let res = match serde_json::from_value::<T::Response>(r.payload) {
+                    Ok(ok) => ok,
+                    Err(_) => return Err(Error{code:-1, message: format!("cannot parse response: {}", raw)}),
+                };
                 Ok(res)
             },
             Err(_) => {

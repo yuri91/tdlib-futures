@@ -139,14 +139,42 @@ impl Sender {
         }
     }
 }
-#[derive(Debug, Clone)]
-pub struct AuthParameters<F: FnMut()->String> {
-    pub tdlib: TdlibParameters,
-    pub encryption_key: String,
-    pub phone: String,
-    pub getcode: F,
-
+pub enum Credentials {
+    User {
+        phone: String,
+        getcode: Box<dyn FnMut()->String>,
+    },
+    Bot {
+        token: String,
+    }
 }
+pub struct AuthParameters {
+    tdlib: TdlibParameters,
+    encryption_key: String,
+    credentials: Credentials
+}
+impl AuthParameters {
+    pub fn for_user<T: 'static + FnMut()->String>(tdlib: TdlibParameters, encryption_key: String, phone: String, getcode: T) -> AuthParameters {
+        AuthParameters {
+            tdlib,
+            encryption_key,
+            credentials: Credentials::User {
+                phone,
+                getcode: Box::new(getcode),
+            },
+        }
+    }
+    pub fn for_bot(tdlib: TdlibParameters, encryption_key: String, token: String) -> AuthParameters {
+        AuthParameters {
+            tdlib,
+            encryption_key,
+            credentials: Credentials::Bot {
+                token
+            },
+        }
+    }
+}
+
 macro_rules! wait_for_authorization_state {
     ($receiver:expr, $name:ident) => {
         loop {
@@ -164,7 +192,7 @@ macro_rules! wait_for_authorization_state {
         }
     }
 }
-pub async fn authorize<F: FnMut()->String>(mut params: AuthParameters<F>, sender: &mut Sender, receiver: &mut Receiver) -> Result<(), Error> {
+pub async fn authorize(params: AuthParameters, sender: &mut Sender, receiver: &mut Receiver) -> Result<(), Error> {
     wait_for_authorization_state!(receiver, AuthorizationStateWaitTdlibParameters);
     let s = SetTdlibParameters {
         parameters: params.tdlib
@@ -176,19 +204,29 @@ pub async fn authorize<F: FnMut()->String>(mut params: AuthParameters<F>, sender
     };
     sender.send(s).await?;
     wait_for_authorization_state!(receiver, AuthorizationStateWaitPhoneNumber);
-    let s = SetAuthenticationPhoneNumber {
-        phone_number: params.phone,
-        allow_flash_call: false,
-        is_current_phone_number: false,
-    };
-    sender.send(s).await?;
-    wait_for_authorization_state!(receiver, AuthorizationStateWaitCode);
-    let s = CheckAuthenticationCode {
-        code: (params.getcode)(),
-        first_name: "".to_owned(),
-        last_name: "".to_owned(),
-    };
-    sender.send(s).await?;
+    match params.credentials {
+        Credentials::User { phone, mut getcode } => {
+            let s = SetAuthenticationPhoneNumber {
+                phone_number: phone,
+                allow_flash_call: false,
+                is_current_phone_number: false,
+            };
+            sender.send(s).await?;
+            wait_for_authorization_state!(receiver, AuthorizationStateWaitCode);
+            let s = CheckAuthenticationCode {
+                code: (getcode)(),
+                first_name: "".to_owned(),
+                last_name: "".to_owned(),
+            };
+            sender.send(s).await?;
+        },
+        Credentials::Bot { token } => {
+            let s = CheckAuthenticationBotToken {
+                token,
+            };
+            sender.send(s).await?;
+        }
+    }
     wait_for_authorization_state!(receiver, AuthorizationStateReady);
     return Ok(());
 }

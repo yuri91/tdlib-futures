@@ -1,8 +1,8 @@
 use dotenv::dotenv;
 use futures::prelude::*;
 use futures::task::SpawnExt;
-use tdlib_futures::client::AuthParameters;
-use tdlib_futures::client::{init, authorize};
+use tdlib_futures::client::init;
+use tdlib_futures::utils::{authorize, AuthParameters};
 use tdlib_futures::types::*;
 use tdlib_futures::methods::*;
 

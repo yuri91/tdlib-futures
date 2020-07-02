@@ -5,3 +5,4 @@ pub use tdlib_types::types as types;
 pub use tdlib_types::methods as methods;
 
 pub mod client;
+pub mod utils;

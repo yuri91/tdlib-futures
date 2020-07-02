@@ -84,8 +84,14 @@ fn render_param(
         quote! {}
     };
     let serialize_number = if typeid_str == "i32" || typeid_str == "i64" {
-        quote!{
-            #[serde(deserialize_with="::serde_aux::field_attributes::deserialize_number_from_string")]
+        if docinfo.optional {
+            quote!{
+                #[serde(deserialize_with="deserialize_opt_i32")]
+            }
+        } else {
+            quote!{
+                #[serde(deserialize_with="::serde_aux::field_attributes::deserialize_number_from_string")]
+            }
         }
     } else {
         quote! {}
@@ -252,7 +258,21 @@ pub fn generate(src: &str) -> (String, String) {
 
     let mut functions = false;
     let mut classes = HashMap::new();
-    let mut type_tokens = quote!{};
+    let mut type_tokens = quote!{
+        use serde::de::Deserializer;
+        use serde::de::Deserialize;
+        #[derive(Debug, Deserialize)]
+        struct WrappedI32(#[serde(deserialize_with="::serde_aux::field_attributes::deserialize_number_from_string")] i32);
+        fn deserialize_opt_i32<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            Option::<WrappedI32>::deserialize(deserializer)
+                .map(|opt_wrapped: Option<WrappedI32>| {
+                    opt_wrapped.map(|wrapped: WrappedI32| wrapped.0)
+                })
+        }
+    };
     let mut method_tokens = quote!{};
     for pair in pairs {
         match pair.as_rule() {

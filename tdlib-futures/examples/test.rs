@@ -66,8 +66,11 @@ fn main() {
                     let resp = SendMessage {
                         chat_id: msg.message.chat_id,
                         reply_to_message_id: msg.message.id,
-                        disable_notification: false,
-                        from_background: false,
+                        options: SendMessageOptions {
+                            disable_notification: false,
+                            from_background: false,
+                            scheduling_state: None,
+                        },
                         reply_markup: None,
                         input_message_content: InputMessageContent::InputMessageText(m),
                     };

@@ -73,15 +73,16 @@ pub async fn authorize(params: AuthParameters, sender: &mut Sender, receiver: &m
         Credentials::User { phone, mut getcode } => {
             let s = SetAuthenticationPhoneNumber {
                 phone_number: phone,
-                allow_flash_call: false,
-                is_current_phone_number: false,
+                settings: PhoneNumberAuthenticationSettings {
+                    allow_flash_call: false,
+                    is_current_phone_number: false,
+                    allow_sms_retriever_api: false,
+                },
             };
             sender.send(s).await?;
             wait_for_authorization_state!(receiver, AuthorizationStateWaitCode);
             let s = CheckAuthenticationCode {
                 code: (getcode)(),
-                first_name: "".to_owned(),
-                last_name: "".to_owned(),
             };
             sender.send(s).await?;
         },

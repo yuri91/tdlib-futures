@@ -5,3 +5,9 @@ members = [
     "tdlib-futures",
     "tdlib-types",
 ]
+
+[patch.crates-io]
+tdjson-sys = { path = "../tdjson-sys" }
+tdlib-futures = { path = "tdlib-futures"}
+tdlib-types = { path = "tdlib-types"}
+tl-codegen = { path = "tl-codegen"}
